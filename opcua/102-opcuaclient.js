@@ -284,8 +284,8 @@ module.exports = function (RED) {
                 return;
             }
 
-            verbose_log("Action on input:" + node.action
-                + " Item from Topic: " + msg.topic + " session Id: " + node.session.sessionId);
+  //          verbose_log("Action on input:" + node.action
+  //              + " Item from Topic: " + msg.topic + " session Id: " + node.session.sessionId);
 
             switch (node.action) {
                 case "read":
@@ -313,8 +313,14 @@ module.exports = function (RED) {
         function read_action_input(msg) {
 
             verbose_log("reading");
-
-            items[0] = msg.topic; // TODO support for multiple item reading
+ 
+            if (msg.topic.length == 0)
+                return;
+            var isArray = Array.isArray(msg.topic);
+            if (!isArray)
+                items[0] = msg.topic;
+            else
+                items = msg.topic; 
 			if (node.session) {
 				node.session.readVariableValue(items, function (err, dataValues, diagnostics) {
 					if (err) {
@@ -330,30 +336,42 @@ module.exports = function (RED) {
 
 							var dataValue = dataValues[i];
 
-							verbose_log("\tNode : " + (msg.topic).cyan.bold);
+                            verbose_log("\tNode : " + (items[i]).cyan.bold);
 
 							if (dataValue) {
 								try {
-									verbose_log("\tValue : " + dataValue.value.value);
-									verbose_log("\tDataType: " + dataValue.value.dataType + " ("+dataValue.value.dataType.toString()+")");
-									verbose_log("\tMessage: " + msg.topic + " ("+msg.datatype+")");
-									if (msg.datatype.localeCompare(dataValue.value.dataType.toString())!=0) {
-										node.error("\tMessage types are not matching: " + msg.topic + " types: " + msg.datatype + " <> " + dataValue.value.dataType.toString());
-									}
-									if (dataValue.value.dataType === opcua.DataType.UInt16) {
-										verbose_log("UInt16:" + dataValue.value.value + " -> Int32:" + opcuaBasics.toInt32(dataValue.value.value));
-									}
-
-									msg.payload = dataValue.value.value;
+                                    if (dataValue.value) {
+                                        verbose_log("\tValue : " + dataValue.value.value);
+                                        verbose_log("\tDataType: " + dataValue.value.dataType + " (" + dataValue.value.dataType.toString() + ")");
+                                        verbose_log("\tMessage: " + items[i] + " (" + msg.datatype + ")");
+                                        if (msg.datatype) {
+                                            if (msg.datatype.localeCompare(dataValue.value.dataType.toString()) != 0) {
+                                                node.error("\tMessage types are not matching: " + msg.topic + " types: " + msg.datatype + " <> " + dataValue.value.dataType.toString());
+                                            }
+                                            if (dataValue.value.dataType === opcua.DataType.UInt16) {
+                                                verbose_log("UInt16:" + dataValue.value.value + " -> Int32:" + opcuaBasics.toInt32(dataValue.value.value));
+                                            }
+                                        }
+                                    }
+                                    if (dataValue.value) {
+                                         if (!isArray) {
+                                            msg.payload = dataValue.value.value;
+                                        }
+                                        else {
+                                            msg.payload[i] = dataValue.value.value;
+                                        }
+                                   }
 
 									if (dataValue.statusCode && dataValue.statusCode.toString(16) == "Good (0x00000)") {
 										verbose_log("\tStatus-Code:" + (dataValue.statusCode.toString(16)).green.bold);
 									}
 									else {
 										verbose_log("\tStatus-Code:" + dataValue.statusCode.toString(16).red.bold);
+                                        node.error("\tBad read: " + (dataValue.statusCode.toString(16)).red.bold);
+                                        node.error("\tMessage:" + items[i] + " dataType:" + msg.datatype);
+                                        node.error("\tData:" + JSON.stringify(dataValue));
 									}
 
-									node.send(msg);
 								}
 								catch (e) {
 
@@ -367,8 +385,9 @@ module.exports = function (RED) {
 									}
 								}
 							}
-						}
-					}
+                        }
+                        node.send(msg);
+                    }
 				});
 			}
 			else {
